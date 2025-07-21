@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>US Education and Financial Information</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://d3js.org/topojson.v3.min.js"></script>
+    <script src="helpers.js"></script>
+    <link rel="stylesheet" href="site.css">
+
+   
+</head>
+<body>
+    <h1 id="title">US Education & Financial Data Explorer</h1>
+
+    <p id="instructions">   
+        Click a state or county to view detalis. Use Compare to explore two areas side-side. <br>
+        Select a metric using the dropdown below to create a color scale for the map.</p>
+    
+    <div class="main-content">
+        <!-- Map -->
+        <svg id="map" height="600" width="800" ></svg>
+        <!-- Side Panels -->
+        <div id="info-panel" class="info-panel">
+            <button id="exit-button" class="panel-button top-left">Close</button>
+            <button id="compare-button" class="panel-button top-right">Compare</button>
+            <div class="card-row">
+                <div id="card-1" class="info-card"></div>
+                <div id="card-2" class="info-card"></div>
+            </div>
+        </div>
+    </div>
+    <!-- Color Scale Selector and Key -->
+    <div id="controls">
+         <div id="legend" style="margin-top: 20px;"></div>
+        <div class="selector-row">
+            <label for="metric-select">Select Data Metric:</label>
+            <select id="metric-select"></select>
+        </div>
+    </div>
+    <!-- Hover tooltip for location name -->
+    <div class="tooltip"></div>
+    
+    <script>
+        const svg = d3.select("#map");
+        const width = svg.attr("width");
+        const height = svg.attr("height");
+        const margin = { top: 20, right: 20, bottom: 20, left: 20 };
+        const mapWidth = width - margin.left - margin.right;
+        const mapHeight = height - margin.top - margin.bottom;
+        const map = svg.append("g")
+                       .attr("transform", `translate(${margin.left},${margin.top})`);
+        const tooltip = d3.select(".tooltip");
+        const exitButton = d3.select("#exit-button");
+        const compareButton = d3.select("#compare-button");
+        const panel = d3.select(".info-panel");
+        let originalTransform = `translate(${margin.left},${margin.top})`;
+        let selectedLocations = {state1: null, county1: null, state2: null, county2: null}; 
+        let compareMode = false;
+        let selectingSecond = false;
+        let compareLevel = "state";
+        let educationData = {};
+        const metrics = populateDropdown(educationData);
+        let currentMetric = "Less HS Pct"; 
+        const instructions = d3.select("#instructions");
+
+
+        // Load the CSV data for Education and Poverty information
+        const loadData = async () => {
+            const data = await d3.csv("Education_Poverty.xlsx - Merged Compact.csv");
+            data.forEach(d => {
+                // Sampled Population
+                const sampledPop = ["Less HS Num", "HS Num", "Some College/Associate Num", "Bachelor/More Num"]
+                    .map(key => Number(String(d[key] || "0").replace(/,/g, "")))
+                    .reduce((a, b) => a + b, 0);
+                d.SampledPopulation = sampledPop.toLocaleString();
+
+                // Poverty Stats (total) - format with commas
+                ["Poverty Num (ALL)", "Poverty Num (0-17)", "Median Household Income"].forEach(key => {
+                    let val = d[key];
+                    if (val !== undefined && val !== null && val !== "") {
+                        // Remove commas, convert to number, then format
+                        let num = Number(String(val).replace(/,/g, ""));
+                        d[key] = isNaN(num) ? "N/A" : num.toLocaleString();
+                    } else {
+                        d[key] = "N/A";
+                    }
+                });
+
+                educationData[d.FIPS] = d;
+            });
+        }
+    loadData();
+console.log("Education Data Loaded:", educationData);
+
+        
+        const requestData = async () => {
+            var us = await d3.json("us-topo.json");
+            var states = topojson.feature(us, us.objects.states);
+            var counties = topojson.feature(us, us.objects.counties);
+            var statesMesh = topojson.mesh(us, us.objects.states);
+            var projection = d3.geoAlbersUsa().fitSize([mapWidth, mapHeight], states);
+            var path = d3.geoPath().projection(projection);
+            const colorScale = d3.scaleQuantize()
+                                 .domain([0, 100])
+                                 .range(d3.schemeBlues[9]);
+
+
+// ====== Map, State, County Drawing ======
+            // Draw states
+            map.selectAll("path.state")
+               .data(states.features)
+               .join("path")
+               .attr("class", "state")
+               .attr("d", path)
+               .on("mouseover", mouseEntersState)
+               .on("mousemove", mouseMovingState)
+               .on("mouseout", mouseLeavesState)
+               .on("click", stateClicked);
+    
+            map.append("path").datum(statesMesh)
+               .attr("class", "outline")
+               .attr("d", path);
+            updateStateColors(currentMetric);
+            // Draw state outlines
+            let stateMouseMesh = map.append("path")
+                                    .attr("class", "mouseover outline")
+                                    .style("stroke", "black")
+                                    .style("stroke-width", 2.5)
+                                    .attr("d", "");
+    
+            let countiesGroup = map.append("g").attr("id", "counties");
+            
+            // Draw county hovering mesh
+            let countyMouseMesh = map.append("path")
+                                    .attr("class", "mouseover outline")
+                                    .style("stroke", "rgb(90, 90, 255)")
+                                    .style("stroke-width", 1.1)
+                                    .style("fill", "none")
+                                    .attr("d", "");
+
+            // BACK BUTTON EVENTS
+            exitButton.on("click", exitButtonClicked);
+            // COMPARE BUTTON EVENTS
+            compareButton.on("click", compareButtonClicked);
+            // Color Scale Selector EVENT
+            d3.select("#metric-select").on("change", function() {
+                currentMetric = this.value;
+                updateStateColors(currentMetric);
+            });
+
+
+
+
+// ====== State Mouse Events ======
+            function mouseEntersState(event, d) {
+                let state = d3.select(this);
+                const stateID = d.id;
+                let fips = stateID.length === 2 ? stateID + "000" : stateID;
+                const data = educationData[fips];
+                let value = data ? data[currentMetric] : null;
+
+                // Format value
+                if (value !== null && value !== undefined) {    
+                    formattedValue = currentMetric === "Median Household Income" ? "$" + value : value + "%";
+                } else {
+                    formattedValue = "No data";
+                }
+                tooltip.style("visibility", "visible")
+                    .html(`<strong>${d.properties.name}</strong><br>${formattedValue}`);
+
+                const hoverMesh = topojson.mesh(us, us.objects.states, function(a, b) {
+                    return a.id === stateID || b.id === stateID;
+                });
+                stateMouseMesh.datum(hoverMesh).attr("d", path);
+            }
+
+            function mouseMovingState(event) {
+                tooltip.style("top", `${event.pageY + 15}px`)
+                       .style("left", `${event.pageX + 10}px`);
+            }
+
+            function mouseLeavesState() {
+                tooltip.style("visibility", "hidden");
+                stateMouseMesh.attr("d", "");
+            }
+
+            function stateClicked(event, d) {
+                if(selectingSecond && compareMode && compareLevel === "state"){
+                    // Remove old state highlight if it exists
+                    if(selectedLocations.state2 != null){
+                        setSelectedHighlight("state", selectedLocations.state2, true);
+                    }
+                    selectedLocations.state2 = d;
+                    updatePanel("card-2", d);
+                    compareView();
+                    return;
+                }else if (!selectingSecond || compareLevel != "county"){
+                    if (selectedLocations.county1 != null){
+                        setSelectedHighlight("county", selectedLocations.county1, true);
+                        selectedLocations.county1 = null;
+                    }
+                    selectedLocations.state1= d;
+                    updatePanel("card-1", d);
+                }
+                zoomToFeature(d); 
+                // Draw county outlines
+                setCountyOutlines(d, false);
+                // Disable hover effect on this state
+                map.selectAll(".state")
+                    .classed("selected", d2 => d2.id === d.id)
+                    .style("pointer-events", d2 => d2.id === d.id ? "none" : "auto");
+            }
+            
+// ====== County Mouse Events ======
+            function mouseEntersCounty(event, d) {
+                let county = d3.select(this);
+                const countyID = d.id;
+                const data = educationData[countyID];
+                let value = data ? data[currentMetric] : null;
+
+                // Format value                
+                if (value !== null && value !== undefined) {
+                    formattedValue = currentMetric === "Median Household Income" ? "$" + value : value + "%";
+                } else {
+                    formattedValue = "No data";
+                }
+                tooltip.style("visibility", "visible")
+                    .html(`<strong>${d.properties.name}</strong><br>${formattedValue}`);
+
+                const hoverMesh = topojson.mesh(us, us.objects.counties, function(a, b) {
+                    return a.id === countyID || b.id === countyID;
+                });
+                countyMouseMesh.datum(hoverMesh).attr("d", path);
+            }
+
+            function mouseMovingCounty(event){
+                tooltip.style("top", `${event.pageY + 15}px`)
+                       .style("left", `${event.pageX + 10}px`);
+            }
+
+            function mouseLeavesCounty() {
+                tooltip.style("visibility", "hidden");
+                countyMouseMesh.attr("d", "");
+            }
+
+            function countyClicked(event, d) {
+                if(selectingSecond = true && compareMode && compareLevel === "county"){
+                    // Remove old county highlight if it exists
+                    if(selectedLocations.county2 != null){
+                        setSelectedHighlight("county", selectedLocations.county2, true);
+                    }
+                    selectedLocations.county2 = d;
+                    updatePanel("card-2", d);
+                    compareView();
+                }else{
+                    if (selectedLocations.county1 != null){
+                        setSelectedHighlight("county", selectedLocations.county1, true);
+                    }
+                    selectedLocations.county1= d;
+                    zoomToFeature(selectedLocations.state1, false, 0.6);
+                    updatePanel("card-1", d);
+                    exitButton.text("Back to State View");
+                    setSelectedHighlight("county", d, false);
+                }
+            }
+
+// ====== BUTTON EVENT HANDLERS ======
+            function exitButtonClicked(){
+                // Exit from county view
+                if (selectedLocations.county1 != null) {
+                    // Reset to state-level view
+                    zoomToFeature(selectedLocations.state1, false, 0.35);
+                    updatePanel("card-1", selectedLocations.state1);
+                    exitButton.text("Close");
+                    setSelectedHighlight("county", selectedLocations.county1, true);
+                    selectedLocations.county1 = null;
+                } else {
+                    zoomToFeature(null, true);
+                    updatePanel("card-1", "", true);
+                    selectedLocations.state1 = null;
+                }
+            }
+            
+            function compareButtonClicked() {
+                // Cancel compare
+                if (compareMode) {
+                    //remove selected highlights: 
+                    if(compareLevel == "state" && selectedLocations.state2 != null){
+                        setSelectedHighlight("state", selectedLocations.state1, true);
+                        setSelectedHighlight("state", selectedLocations.state2, true);
+                    } else if (compareLevel == "county" && selectedLocations.county2 != null){
+                        setSelectedHighlight("county", selectedLocations.county2, true);
+                    }
+                    compareMode = false;
+                    selectingSecond = false;
+                    exitButton.text("Exit");
+                    exitButton.style("visibility", "visible");
+                    compareButton.text("Compare");
+                    panel.style("width", "400px");
+                    updatePanel("card-1","");
+                    stateClicked(null, selectedLocations.state1);
+                    selectedLocations.state2 = null;
+                    selectedLocations.county2 = null;
+                    compareLevel = "state";
+                    countyMouseMesh.attr("d", ""); // this is needed to force the svg to be redrawn (to automatically remove the highlight on county2)
+                    instructions.html("Click a state or county to view detalis. Use Compare to explore two areas side-side. <br> Select a metric using the dropdown below to create a color scale for the map.");
+                }
+                // Start compare
+                else{
+                    compareLevel = selectedLocations.county1 == null ? "state" : "county";
+                    compareMode = true;
+                    selectingSecond = true;
+                    zoomToFeature(null, true);
+                    console.log(countiesGroup);
+                    exitButton.style("visibility", "hidden");
+                    exitButton.text("Reselect Location");
+                    compareButton.text("Cancel Compare");
+                    instructions.text(
+                    `Now select a second ${compareLevel} 
+                    to compare against ${compareLevel === "county" ? selectedLocations.county1.properties.name : selectedLocations.state1.properties.name}.`
+                    );
+                    instructions.style("color", "red");
+                }
+            }
+
+// ====== DRAWING HELPERS ======
+            function updateStateColors(metric) {
+                // Only use state-level data (FIPS ending in "000", but not "00000")
+                const stateEntries = Object.entries(educationData)
+                    .filter(([fips, d]) => fips.endsWith("000") && fips !== "00000");
+
+                // Get all values for the selected metric, removing commas and converting to numbers
+                const values = stateEntries
+                    .map(([fips, d]) => {
+                        let val = d[metric];
+                        if (typeof val === "string") val = val.replace(/,/g, "");
+                        return +val;
+                    })
+                    .filter(v => !isNaN(v));
+
+                const min = d3.min(values);
+                const max = d3.max(values);
+
+                // Create quantized color scale
+                const colorScale = d3.scaleQuantize()
+                    .domain([min, max])
+                    .range(d3.schemeBlues[9]);
+
+                // Update state colors
+                map.selectAll("path.state")
+                    .transition()
+                    .duration(500)
+                    .style("fill", d => {
+                        // Get state FIPS as "XX000"
+                        let fips = d.id;
+                        if (fips.length === 2) fips = fips + "000";
+                        const data = educationData[fips];
+                        let val = data ? data[metric] : null;
+                        if (typeof val === "string") val = val.replace(/,/g, "");
+                        return data ? colorScale(+val) : "#ccc";
+                    });
+
+                // Update legend
+                updateLegend(colorScale, min, max);
+            }         
+
+            // adds or removes county outlines based on the selected state
+            function setCountyOutlines(d , reset = false) {       
+                if (reset){
+                    countiesGroup.selectAll("path").remove();
+                } else{
+                    const stateCounties = counties.features.filter(c => c.id.startsWith(d.id));
+                    countiesGroup.selectAll("path")
+                                .data(stateCounties)
+                                .join("path")
+                                .attr("d", path)
+                                .attr("class", "county")
+                                .style("fill", "transparent")
+                                .style("stroke", "rgb(40, 40, 40)")
+                                .style("stroke-width", "0.8px")
+                                .on("mouseover", mouseEntersCounty)
+                                .on("mousemove", mouseMovingCounty)
+                                .on("mouseout", mouseLeavesCounty)
+                                .on("click", countyClicked);
+                }
+            }
+
+            // adds or removes a blue highlight outline for the selected state or county
+            function setSelectedHighlight(locType, d, remove = false) {
+                if (remove) {
+                    d3.selectAll(".selected.outline[data-id='" + d.id + "']").remove();
+                    console.log("removed outline");
+                } else {
+                    const feature = locType == "state" ? us.objects.states : us.objects.counties;
+                    console.log(feature);
+                    const hoverMesh = topojson.mesh(us, feature, (a, b) => a.id === d.id || b.id === d.id);
+                    map.append("path")
+                        .datum(hoverMesh)
+                        .attr("class", "selected outline")
+                        .style("stroke", "orange")
+                        .style("stroke-width", 1.1)
+                        .style("fill", "none")
+                        .attr("d", path)
+                        .attr("data-id", d.id); // Adding data-id to target it later
+                }
+            }
+
+            // Enters comparison view by zooming out and adding outlines to the two selected locations.
+            function compareView(){
+                instructions.html(`Click another ${compareLevel} to reselect Location 2. <br> Cancel the comparison to return to Location 1`);
+                instructions.style("color", "black");
+                zoomToFeature(null, true);
+                if(compareLevel == "state"){
+                    setSelectedHighlight("state", selectedLocations.state1, false);
+                    setSelectedHighlight("state", selectedLocations.state2, false);
+                } else{
+                    setSelectedHighlight("county", selectedLocations.county1, false);
+                    setSelectedHighlight("county", selectedLocations.county2, false);
+                }
+            }
+
+            // Focuses the map on the selected feature (state or county)
+            function zoomToFeature(feature, reset = false, scaleModifier = 0.35) {
+                if (reset) {
+                    map.transition()
+                        .duration(750)
+                        .attr("transform", originalTransform);
+                        setCountyOutlines(null, true);
+                        console.log("removing county outlines");
+                        map.selectAll(".state").classed("selected", false).style("pointer-events", "auto");
+                        return;
+                }
+                const bounds = path.bounds(feature);
+                const dx = bounds[1][0] - bounds[0][0];
+                const dy = bounds[1][1] - bounds[0][1];
+                const x = (bounds[0][0] + bounds[1][0]) / 2;
+                const y = (bounds[0][1] + bounds[1][1]) / 2;
+                const scale = scaleModifier / Math.max(dx / mapWidth, dy / mapHeight);  
+                const translate = [mapWidth / 2 - scale * x, mapHeight / 2 - scale * y];
+                map.transition()
+                .duration(750)
+                .attr("transform", `translate(${translate})scale(${scale})`);
+            } 
+        };
+    
+        requestData();
+    </script>
+</body>
