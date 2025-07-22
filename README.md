@@ -68,7 +68,7 @@ The dataset used is a cleaned CSV containing merged metrics from U.S. Census Bur
 
 - Add a search bar to find locations by name or ZIP Code.
 - Include trend data over time for each metric.
-- Make the map mobile-optimized for smaller screens.
+- Add graphs and charts to info cards to further visualize location data.
 
 ---
 
