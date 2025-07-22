@@ -12,15 +12,15 @@
 </head>
 <body>
     <h1 id="title">US Education & Financial Data Explorer</h1>
-
+    <!-- Instructions Section -->
     <p id="instructions">   
-        Click a state or county to view detalis. Use Compare to explore two areas side-side. <br>
-        Select a metric using the dropdown below to create a color scale for the map.</p>
-    
+        Click a state or county to view details. Use Compare to explore two areas side-side. <br>
+        Select a metric using the dropdown below to create a color scale for the map.
+    </p>
     <div class="main-content">
         <!-- Map -->
         <svg id="map" height="600" width="800" ></svg>
-        <!-- Side Panels -->
+        <!-- Side Info Panel -->
         <div id="info-panel" class="info-panel">
             <button id="exit-button" class="panel-button top-left">Close</button>
             <button id="compare-button" class="panel-button top-right">Compare</button>
@@ -32,7 +32,7 @@
     </div>
     <!-- Color Scale Selector and Key -->
     <div id="controls">
-         <div id="legend" style="margin-top: 20px;"></div>
+         <div id="legend" "></div>
         <div class="selector-row">
             <label for="metric-select">Select Data Metric:</label>
             <select id="metric-select"></select>
@@ -69,13 +69,13 @@
         const loadData = async () => {
             const data = await d3.csv("Education_Poverty.xlsx - Merged Compact.csv");
             data.forEach(d => {
-                // Sampled Population
+                // Add Key for Sampled Population
                 const sampledPop = ["Less HS Num", "HS Num", "Some College/Associate Num", "Bachelor/More Num"]
                     .map(key => Number(String(d[key] || "0").replace(/,/g, "")))
                     .reduce((a, b) => a + b, 0);
                 d.SampledPopulation = sampledPop.toLocaleString();
 
-                // Poverty Stats (total) - format with commas
+                // Format long numbers with commas
                 ["Poverty Num (ALL)", "Poverty Num (0-17)", "Median Household Income"].forEach(key => {
                     let val = d[key];
                     if (val !== undefined && val !== null && val !== "") {
@@ -86,74 +86,71 @@
                         d[key] = "N/A";
                     }
                 });
-
                 educationData[d.FIPS] = d;
             });
         }
     loadData();
-console.log("Education Data Loaded:", educationData);
 
         
-        const requestData = async () => {
-            var us = await d3.json("us-topo.json");
-            var states = topojson.feature(us, us.objects.states);
-            var counties = topojson.feature(us, us.objects.counties);
-            var statesMesh = topojson.mesh(us, us.objects.states);
-            var projection = d3.geoAlbersUsa().fitSize([mapWidth, mapHeight], states);
-            var path = d3.geoPath().projection(projection);
-            const colorScale = d3.scaleQuantize()
-                                 .domain([0, 100])
-                                 .range(d3.schemeBlues[9]);
-
-
+    const requestData = async () => {
+        var us = await d3.json("us-topo.json");
+        var states = topojson.feature(us, us.objects.states);
+        var counties = topojson.feature(us, us.objects.counties);
+        var statesMesh = topojson.mesh(us, us.objects.states);
+        var projection = d3.geoAlbersUsa().fitSize([mapWidth, mapHeight], states);
+        var path = d3.geoPath().projection(projection);
+        const colorScale = d3.scaleQuantize()
+                            .domain([0, 100])
+                            .range(d3.schemeBlues[9]);  
+                            
 // ====== Map, State, County Drawing ======
-            // Draw states
-            map.selectAll("path.state")
-               .data(states.features)
-               .join("path")
-               .attr("class", "state")
-               .attr("d", path)
-               .on("mouseover", mouseEntersState)
-               .on("mousemove", mouseMovingState)
-               .on("mouseout", mouseLeavesState)
-               .on("click", stateClicked);
-    
-            map.append("path").datum(statesMesh)
-               .attr("class", "outline")
-               .attr("d", path);
-            updateStateColors(currentMetric);
-            // Draw state outlines
-            let stateMouseMesh = map.append("path")
-                                    .attr("class", "mouseover outline")
-                                    .style("stroke", "black")
-                                    .style("stroke-width", 2.5)
-                                    .attr("d", "");
-    
-            let countiesGroup = map.append("g").attr("id", "counties");
-            
-            // Draw county hovering mesh
-            let countyMouseMesh = map.append("path")
-                                    .attr("class", "mouseover outline")
-                                    .style("stroke", "rgb(90, 90, 255)")
-                                    .style("stroke-width", 1.1)
-                                    .style("fill", "none")
-                                    .attr("d", "");
+        // Draw states
+        map.selectAll("path.state")
+            .data(states.features)
+            .join("path")
+            .attr("class", "state")
+            .attr("d", path)
+            .on("mouseover", mouseEntersState)
+            .on("mousemove", mouseMovingState)
+            .on("mouseout", mouseLeavesState)
+            .on("click", stateClicked);
+            
+        map.append("path").datum(statesMesh)
+            .attr("class", "outline")
+            .attr("d", path);
+        updateStateColors(currentMetric);
+        // Draw state outlines
+        let stateMouseMesh = map.append("path")
+                                .attr("class", "mouseover outline")
+                                .style("stroke", "black")
+                                .style("stroke-width", 2.5)
+                                .attr("d", "");
+            
+        let countiesGroup = map.append("g").attr("id", "counties");
+            
+        // Draw county hovering mesh
+        let countyMouseMesh = map.append("path")
+                                .attr("class", "mouseover outline")
+                                .style("stroke", "#ff00ff")
+                                .style("stroke-width", 1.1)
+                                .style("fill", "none")
+                                .attr("d", "");       
 
-            // BACK BUTTON EVENTS
-            exitButton.on("click", exitButtonClicked);
-            // COMPARE BUTTON EVENTS
-            compareButton.on("click", compareButtonClicked);
-            // Color Scale Selector EVENT
-            d3.select("#metric-select").on("change", function() {
-                currentMetric = this.value;
-                updateStateColors(currentMetric);
-            });
+        // BACK BUTTON EVENTS
+        exitButton.on("click", exitButtonClicked);
 
+        // COMPARE BUTTON EVENTS
+        compareButton.on("click", compareButtonClicked);
 
+        // SCALE SELECTOR EVENT
+        d3.select("#metric-select").on("change", function() {
+                    currentMetric = this.value;
+                    updateStateColors(currentMetric);
+        });
 
 
 // ====== State Mouse Events ======
-            function mouseEntersState(event, d) {
+            function mouseEntersState(event, d) {
                 let state = d3.select(this);
                 const stateID = d.id;
                 let fips = stateID.length === 2 ? stateID + "000" : stateID;
@@ -175,15 +172,15 @@ console.log("Education Data Loaded:", educationData);
                 stateMouseMesh.datum(hoverMesh).attr("d", path);
             }
 
-            function mouseMovingState(event) {
-                tooltip.style("top", `${event.pageY + 15}px`)
-                       .style("left", `${event.pageX + 10}px`);
-            }
+            function mouseMovingState(event) {
+                tooltip.style("top", `${event.pageY + 15}px`)
+                        .style("left", `${event.pageX + 10}px`);
+            }
 
-            function mouseLeavesState() {
-                tooltip.style("visibility", "hidden");
-                stateMouseMesh.attr("d", "");
-            }
+            function mouseLeavesState() {
+                tooltip.style("visibility", "hidden");
+                stateMouseMesh.attr("d", "");
+            }          
 
             function stateClicked(event, d) {
                 if(selectingSecond && compareMode && compareLevel === "state"){
@@ -195,7 +192,7 @@ console.log("Education Data Loaded:", educationData);
                     updatePanel("card-2", d);
                     compareView();
                     return;
-                }else if (!selectingSecond || compareLevel != "county"){
+                } else if (!selectingSecond || compareLevel != "county"){
                     if (selectedLocations.county1 != null){
                         setSelectedHighlight("county", selectedLocations.county1, true);
                         selectedLocations.county1 = null;
@@ -207,13 +204,13 @@ console.log("Education Data Loaded:", educationData);
                 // Draw county outlines
                 setCountyOutlines(d, false);
                 // Disable hover effect on this state
-                map.selectAll(".state")
-                    .classed("selected", d2 => d2.id === d.id)
-                    .style("pointer-events", d2 => d2.id === d.id ? "none" : "auto");
+                map.selectAll(".state")
+                    .classed("selected", d2 => d2.id === d.id)
+                    .style("pointer-events", d2 => d2.id === d.id ? "none" : "auto");
             }
             
 // ====== County Mouse Events ======
-            function mouseEntersCounty(event, d) {
+            function mouseEntersCounty(event, d) {
                 let county = d3.select(this);
                 const countyID = d.id;
                 const data = educationData[countyID];
@@ -234,18 +231,18 @@ console.log("Education Data Loaded:", educationData);
                 countyMouseMesh.datum(hoverMesh).attr("d", path);
             }
 
-            function mouseMovingCounty(event){
-                tooltip.style("top", `${event.pageY + 15}px`)
-                       .style("left", `${event.pageX + 10}px`);
-            }
+            function mouseMovingCounty(event){
+                tooltip.style("top", `${event.pageY + 15}px`)
+                        .style("left", `${event.pageX + 10}px`);
+            }    
 
-            function mouseLeavesCounty() {
-                tooltip.style("visibility", "hidden");
-                countyMouseMesh.attr("d", "");
-            }
+            function mouseLeavesCounty() {
+                tooltip.style("visibility", "hidden");
+                countyMouseMesh.attr("d", "");
+            } 
 
-            function countyClicked(event, d) {
-                if(selectingSecond = true && compareMode && compareLevel === "county"){
+            function countyClicked(event, d) {
+                if(selectingSecond && compareMode && compareLevel === "county"){
                     // Remove old county highlight if it exists
                     if(selectedLocations.county2 != null){
                         setSelectedHighlight("county", selectedLocations.county2, true);
@@ -258,28 +255,28 @@ console.log("Education Data Loaded:", educationData);
                         setSelectedHighlight("county", selectedLocations.county1, true);
                     }
                     selectedLocations.county1= d;
-                    zoomToFeature(selectedLocations.state1, false, 0.6);
-                    updatePanel("card-1", d);
+                    zoomToFeature(selectedLocations.state1, false, 0.6);
+                    updatePanel("card-1", d);
                     exitButton.text("Back to State View");
                     setSelectedHighlight("county", d, false);
                 }
             }
 
 // ====== BUTTON EVENT HANDLERS ======
-            function exitButtonClicked(){
+            function exitButtonClicked(){
                 // Exit from county view
                 if (selectedLocations.county1 != null) {
                     // Reset to state-level view
                     zoomToFeature(selectedLocations.state1, false, 0.35);
-                    updatePanel("card-1", selectedLocations.state1);
+                    updatePanel("card-1", selectedLocations.state1);
                     exitButton.text("Close");
                     setSelectedHighlight("county", selectedLocations.county1, true);
                     selectedLocations.county1 = null;
-                } else {
+                } else {
                     zoomToFeature(null, true);
                     updatePanel("card-1", "", true);
                     selectedLocations.state1 = null;
-                }
+                }
             }
             
             function compareButtonClicked() {
@@ -312,7 +309,6 @@ console.log("Education Data Loaded:", educationData);
                     compareMode = true;
                     selectingSecond = true;
                     zoomToFeature(null, true);
-                    console.log(countiesGroup);
                     exitButton.style("visibility", "hidden");
                     exitButton.text("Reselect Location");
                     compareButton.text("Cancel Compare");
@@ -390,10 +386,8 @@ console.log("Education Data Loaded:", educationData);
             function setSelectedHighlight(locType, d, remove = false) {
                 if (remove) {
                     d3.selectAll(".selected.outline[data-id='" + d.id + "']").remove();
-                    console.log("removed outline");
                 } else {
                     const feature = locType == "state" ? us.objects.states : us.objects.counties;
-                    console.log(feature);
                     const hoverMesh = topojson.mesh(us, feature, (a, b) => a.id === d.id || b.id === d.id);
                     map.append("path")
                         .datum(hoverMesh)
@@ -427,7 +421,6 @@ console.log("Education Data Loaded:", educationData);
                         .duration(750)
                         .attr("transform", originalTransform);
                         setCountyOutlines(null, true);
-                        console.log("removing county outlines");
                         map.selectAll(".state").classed("selected", false).style("pointer-events", "auto");
                         return;
                 }
@@ -442,8 +435,7 @@ console.log("Education Data Loaded:", educationData);
                 .duration(750)
                 .attr("transform", `translate(${translate})scale(${scale})`);
             } 
-        };
-    
-        requestData();
-    </script>
+        };   
+        requestData();
+    </script>
 </body>

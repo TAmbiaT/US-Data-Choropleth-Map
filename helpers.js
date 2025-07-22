@@ -1,11 +1,10 @@
 function updatePanel(cardID, d, close = false) {
     const card1 = d3.select("#card-1");
     const card2 = d3.select("#card-2");
-
+    // panel is defined in index.html script scope
 
     // Close Panel
     if (close) {
-        console.log("Closing panel");
         card1.style("width", "0px");
         setTimeout(() => {
             card1.style("visibility", "hidden");
@@ -18,15 +17,13 @@ function updatePanel(cardID, d, close = false) {
     // Open Panel 1
     else if (cardID === "card-1") {
         card2.style("display", "none");
-        console.log("Opening panel 1");
-        card1.style("width", "400px").style("visibility", "visible");;
+        card1.style("width", "400px").style("visibility", "visible");
         exitButton.style("visibility", "visible");
         compareButton.style("visibility", "visible");
         fillCardContent("card-1", d);
     } 
     // Open Panel 2
     else {
-        console.log("Opening panel 2");
         panel.style("width", "750px");
         card1.style("width", "auto")
         card2.style("display", "block").style("visibility", "visible");
@@ -57,7 +54,6 @@ function fillCardContent(cardID, d) {
         return;
     }
 
-    // Build HTML content string
     const content = `
         <div class="card-title">${d.properties?.name}</div>
         <div class="section-title">Population Stats </div>
@@ -85,12 +81,11 @@ function fillCardContent(cardID, d) {
         <div class="section-title">Income Stats</div>
         <div class="section-content"><strong>Median Household Income:</strong>$${data['Median Household Income'] ?? "N/A"}</div>`
     ;
-
    card.html(content);
 }
 
 function populateDropdown(educationData) {
-    // Only include these metrics
+    // Metrics to include in dropdown
     const metricMap = {
         "Less HS Pct": "Did Not Complete HS (%)",
         "HS Pct": "Completed HS (%)",
@@ -117,18 +112,16 @@ function updateLegend(colorScale, min, max) {
     const legendHeight = 40;
     const legendSteps = colorScale.range().length;
     const step = (max - min) / legendSteps;
-    const padding = 10; // Increased padding for more space
+    const padding = 10; 
 
     // Remove old legend
     d3.select("#legend").selectAll("*").remove();
 
-    // Create SVG for legend with extra width for padding
     const svg = d3.select("#legend")
         .append("svg")
         .attr("width", legendWidth + 2 * padding)
         .attr("height", legendHeight + 30);
 
-    // Draw color boxes, shifted right by padding
     svg.selectAll("rect")
         .data(colorScale.range())
         .join("rect")
@@ -138,7 +131,6 @@ function updateLegend(colorScale, min, max) {
         .attr("height", legendHeight)
         .attr("fill", d => d);
 
-    // Format numbers with commas if needed
     function formatLabel(val) {
         val = +val;
         return (val >= 1000) ? val.toLocaleString() : val;
@@ -167,10 +159,3 @@ function updateLegend(colorScale, min, max) {
         .attr("font-size", "12px")
         .text(d => d);
 }
-
-
-
-
-
-
-
