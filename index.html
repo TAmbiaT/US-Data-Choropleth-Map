@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>US Education and Financial Information</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="https://d3js.org/topojson.v3.min.js"></script>
     <script src="helpers.js"></script>
@@ -19,8 +20,7 @@
     </p>
     <div class="main-content">
         <!-- Map -->
-        <svg id="map" height="600" width="800" ></svg>
-        <!-- Side Info Panel -->
+        <svg id="map" viewBox="0 0 800 600" preserveAspectRatio="xMidYMid meet"></svg>        <!-- Side Info Panel -->
         <div id="info-panel" class="info-panel">
             <button id="exit-button" class="panel-button top-left">Close</button>
             <button id="compare-button" class="panel-button top-right">Compare</button>
@@ -43,9 +43,10 @@
     
     <script>
         const svg = d3.select("#map");
-        const width = svg.attr("width");
-        const height = svg.attr("height");
-        const margin = { top: 20, right: 20, bottom: 20, left: 20 };
+        const viewBox = svg.attr("viewBox").split(" ");
+        const width = +viewBox[2];
+        const height = +viewBox[3];
+        const margin = { top: 10, right: 10, bottom: 10, left: 20 };
         const mapWidth = width - margin.left - margin.right;
         const mapHeight = height - margin.top - margin.bottom;
         const map = svg.append("g")
@@ -54,6 +55,7 @@
         const exitButton = d3.select("#exit-button");
         const compareButton = d3.select("#compare-button");
         const panel = d3.select(".info-panel");
+        const controls = d3.select("#controls");
         let originalTransform = `translate(${margin.left},${margin.top})`;
         let selectedLocations = {state1: null, county1: null, state2: null, county2: null}; 
         let compareMode = false;

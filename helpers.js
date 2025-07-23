@@ -12,10 +12,12 @@ function updatePanel(cardID, d, close = false) {
             exitButton.style("visibility", "hidden");
             compareButton.style("visibility", "hidden");
         }, 300);  
+        if(innerWidth <= 1024) panel.style("display", "none");
         return;  
     } 
     // Open Panel 1
     else if (cardID === "card-1") {
+        panel.style("display", "flex")
         card2.style("display", "none");
         card1.style("width", "400px").style("visibility", "visible");
         exitButton.style("visibility", "visible");
@@ -108,7 +110,9 @@ function populateDropdown(educationData) {
 
 // Draw/update the legend for the color scale
 function updateLegend(colorScale, min, max) {
-    const legendWidth = 600;
+    const controlsWidth = d3.select("#controls").node().getBoundingClientRect().width;
+    console.log("Controls width:", controlsWidth);
+    const legendWidth = controlsWidth > 600 ? 600 : controlsWidth-40;
     const legendHeight = 40;
     const legendSteps = colorScale.range().length;
     const step = (max - min) / legendSteps;
